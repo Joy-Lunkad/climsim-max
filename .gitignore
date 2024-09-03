@@ -154,3 +154,5 @@ sample_id_to_sample_weights.csv
 .vscode/settings.json
 .vscode/settings.json
 /.vscode
+test_submission.csv
+test_submission_0.csv
