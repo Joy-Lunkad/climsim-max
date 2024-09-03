@@ -124,8 +124,8 @@ def length_trim(ds, max_len):
 # Main dataset preparation.
 # -----------------------------------------------------------------------------
 
-sample_weights = tf.convert_to_tensor(np.load("sample_weights_s_scores.npy"))
-sid_to_sw = pd.read_csv("sample_id_to_sample_weights.csv", index_col=0)
+sample_weights = tf.convert_to_tensor(np.load("saved_data/sample_weights_s_scores.npy"))
+sid_to_sw = pd.read_csv("saved_data/sample_id_to_sample_weights.csv", index_col=0)
 sid_to_sw = sid_to_sw.to_dict()["sample_weight"]
 MIN_SW = 0.024394170768953
 
