@@ -583,7 +583,7 @@ def train_loop(config, state=None):
   recorder = create_goodput_recorder(config)
   record_goodput(recorder, config, job_start=True)
 
-  wandb.login(key="60042b6f73f3a032fb1097389f3c7bf42fe046f2")
+  wandb.login(key='your-wandb-key')
   if jax.process_index() == 0:
     
     raw_keys = config.get_keys()
