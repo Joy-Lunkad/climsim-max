@@ -204,14 +204,8 @@ class Decoder(nn.Module):
   ):
     cfg = self.config
     mesh = self.mesh
-    assert decoder_input_tokens.ndim == 2  # [batch, len]
-
-    # rich.print(
-    #     f"Inside Decoder: {decoder_input_tokens.shape=}, {decoder_input_tokens.dtype=}"
-    # )
     
-    # [batch, length] -> [batch, length, emb_dim]
-    y = self.shared_embedding(decoder_input_tokens)
+    y = self.shared_embedding(decoder_input_tokens, decoder_positions)
     y = nn.Dropout(rate=cfg.dropout_rate, broadcast_dims=(-2,))(y, deterministic=deterministic)
     y = y.astype(cfg.dtype)
 
@@ -390,7 +384,7 @@ class Transformer(nn.Module):
   def __call__(
       self,
       decoder_input_tokens,
-      decoder_positions,
+      grid_positions,
       decoder_segment_ids=None,
       enable_dropout=True,
       model_mode=common_types.MODEL_MODE_TRAIN,
@@ -405,7 +399,7 @@ class Transformer(nn.Module):
 
     logits = self.decoder(
         decoder_input_tokens=decoder_input_tokens,
-        decoder_positions=decoder_positions,
+        decoder_positions=grid_positions,
         decoder_segment_ids=decoder_segment_ids,
         deterministic=not enable_dropout,
         model_mode=model_mode,
@@ -435,7 +429,7 @@ class MLP(nn.Module):
   def __call__(
       self,
       decoder_input_tokens,
-      decoder_positions,
+      grid_positions,
       decoder_segment_ids=None,
       enable_dropout=True,
       model_mode=common_types.MODEL_MODE_TRAIN,

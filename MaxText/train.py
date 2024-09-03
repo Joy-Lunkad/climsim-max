@@ -32,10 +32,12 @@ from flax.linen import partitioning as nn_partitioning
 import rich
 import grain.python as grain
 import jax
+import jax.tree_util as jtu
 import numpy as np
 import optax
 import orbax.checkpoint
 import tensorflow as tf
+from etils import etree
 
 import checkpointing
 import max_utils
@@ -245,14 +247,14 @@ def loss_fn(model, config, data, dropout_rng, params, is_train=True):
   y_pred, intermediate_outputs = model.apply(
       params,
       data["inputs"],
-      None,
+      grid_positions=data.get("grid_pos", None),
       decoder_segment_ids=None,
       enable_dropout=config.enable_dropout if is_train else False,
       rngs={"dropout": rng1, "params": aqt_rng},
       mutable="intermediates",
   )
   
-  y_true = data["targets"][:, :config.N_OUT]
+  y_true = data["targets"].reshape(-1, *data["targets"].shape[2:])
   
   y_true = max_utils.scale_output(y_true)
   y_pred = max_utils.scale_output(y_pred)
@@ -546,8 +548,10 @@ def setup_train_loop(config):
     setup_mesh_and_model(config)
     )
   
+  print("inside setup train loop")
+  
   data_iterator, eval_data_iterator, test_data_iterator = (
-        create_data_iterator_with_tokenizer(config, mesh)
+    create_data_iterator_with_tokenizer(config, mesh)
     )
 
   state, state_mesh_annotations, data_iterator = max_utils.setup_training_state(
@@ -583,7 +587,7 @@ def train_loop(config, state=None):
   recorder = create_goodput_recorder(config)
   record_goodput(recorder, config, job_start=True)
 
-  wandb.login(key='your-wandb-key')
+  wandb.login(key="your-wandb-key")
   if jax.process_index() == 0:
     
     raw_keys = config.get_keys()
@@ -614,6 +618,12 @@ def train_loop(config, state=None):
       state,
   ) = setup_train_loop(config)
   # pylint: disable=line-too-long
+  
+  print("Input data -> ")
+  for data in data_iterator:
+    print(maxtext_utils.tree_shape(data))
+    break
+  
   (
       functional_train,
       in_shard_train,
@@ -625,6 +635,12 @@ def train_loop(config, state=None):
     )
 
   if eval_data_iterator:
+    
+    print("Eval data -> ")
+    for data in eval_data_iterator:
+      print(maxtext_utils.tree_shape(data))
+      break
+    
     
     # pylint: disable=line-too-long
     (
@@ -715,7 +731,7 @@ def train_loop(config, state=None):
 
     with jax.profiler.StepTraceAnnotation("train", step_num=step):
       example_batch = load_next_batch(data_iterator, example_batch, config)
-      if step == 1:
+      if step == 0:
         max_logging.log(maxtext_utils.tree_shape(example_batch))
         max_logging.log(example_batch)
         

@@ -168,6 +168,7 @@ def preprocessing_pipeline(
     data_shuffle_seed=0,
     has_targets=True,
     normalize=True,
+    grid_size=384,
 ):
     """Shuffle and batch/pack the given dataset."""
 
@@ -182,20 +183,28 @@ def preprocessing_pipeline(
     if normalize:
         dataset = dataset.map(norm_fn)
 
-    def truncate_to_max_allowable_length(x):
-        x["inputs"] = x["inputs"][:max_input_length]
+    def decode_sid(x):
         sample_id_str_decoded = tf.strings.as_string(
             x["sample_id"]
-        )  # eg: test_{f_name}_553446
-        sample_id = tf.strings.split(sample_id_str_decoded, "_")[-1]  # eg: 553446
-        sample_id = tf.strings.to_number(sample_id, out_type=tf.int32)
+        )  # eg: train_0005-03-21-51600
+        sample_id = tf.strings.split(sample_id_str_decoded, "_")[
+            -1
+        ]  # eg: "0005-03-21-51600"
+        sample_id = tf.strings.reduce_join(
+            tf.strings.split(sample_id, "-")
+        )  # eg: "0005032151600"
+        sample_id = tf.strings.to_number(sample_id, out_type=tf.int64)
         x["sample_id"] = sample_id
-
-        if has_targets:
-            x["targets"] = x["targets"][:max_target_length]
         return x
 
-    dataset = dataset.map(lambda x: truncate_to_max_allowable_length(x))
+    def drop_sample_id(x):
+        data = {
+            "inputs": x["inputs"],
+            "targets": x["targets"],
+        }
+        return data
+
+    dataset = dataset.map(lambda x: drop_sample_id(x))
 
     # Shuffle and repeat.
     if shuffle:
@@ -218,44 +227,31 @@ def preprocessing_pipeline(
         batch_size % global_mesh.size == 0
     ), "Batch size should be divisible number of global devices."
 
-    for example in dataset.take(1):
-        assign_sample_weights = "sample_weight" in example.keys()
+    # for example in dataset.take(1):
+    #     assign_sample_weights = "sample_weight" in example.keys()  # type: ignore
+    #     has_grid_pos = "grid_pos" in example.keys()  # type: ignore
+    #     full_grid_in_example = (
+    #         example["inputs"].shape[0] == grid_size  # type: ignore
+    #         and len(example["inputs"].shape) == 2  # type: ignore
+    #     )
 
-    # Batch examples.
-    if pack_examples:
-        dataset = dataset.batch(
-            batch_size // jax.process_count(), drop_remainder=drop_remainder
-        )
-    else:
-        # simple (static-shape) padded batching
-        pad_shapes = {"inputs": max_input_length}
-        pad_values = {"inputs": 0.0}
-        pad_shapes["sample_id"] = []
-        pad_values["sample_id"] = -1
+    #     if full_grid_in_example:
+    #         assert batch_size % (grid_size * global_mesh.size) == 0, (
+    #             f"Batch size should be divisible by"
+    #             f"grid_size * num_global_devices = {grid_size * global_mesh.size}."
+    #         )
+    #         batch_size = batch_size // grid_size
 
-        if has_targets:
-            pad_shapes["targets"] = max_target_length
-            pad_values["targets"] = 0.0
+    dataset = dataset.batch(
+        batch_size // jax.process_count(), drop_remainder=drop_remainder
+    )
 
-        if assign_sample_weights:
-            pad_shapes["sample_weight"] = []
-            pad_values["sample_weight"] = -1.0
-
-        dataset = dataset.padded_batch(
-            batch_size // jax.process_count(),
-            padded_shapes=pad_shapes,
-            padding_values=pad_values,
-            drop_remainder=drop_remainder,
-        )
-
-    if prefetch_size:
-        dataset = dataset.prefetch(prefetch_size)
+    dataset = dataset.prefetch(tf.data.experimental.AUTOTUNE)
 
     multihost_gen = multihost_dataloading.MultiHostDataLoadIterator(
         dataset, global_mesh
     )
 
-    # Return multi-host jax.Array prep iterator
     return multihost_gen
 
 
@@ -302,7 +298,7 @@ def get_datasets(
     )
 
     if config.use_full_low_res_data:
-        
+
         def assign_weight(example):
             sample_id_str_decoded = tf.strings.as_string(example["sample_id"])
             sample_weight = sample_weights_lookup_table.lookup(sample_id_str_decoded)
@@ -313,7 +309,6 @@ def get_datasets(
             return example
 
         train_ds = train_ds.map(assign_weight)
-
 
     # Evaluation dataset.
     if config.eval_dataset_name:
@@ -355,6 +350,47 @@ def get_datasets(
     return train_ds, eval_ds, test_ds
 
 
+def get_lr_grid_datasets(
+    config,
+    dataloading_host_index,
+    dataloading_host_count,
+    read_config=None,
+):
+    """Load and return dataset of batched examples for use during training."""
+
+    version = config.full_low_res_version
+    train_split = "train[:95%]"
+    eval_split = "train[95%:]"
+
+    train_ds_builder = tfds.builder(
+        f"climsim_lr_train_grid:{version}", data_dir="gs://us2-climsim"
+    )
+    # train_data = get_raw_dataset(train_ds_builder, 'train')
+    train_ds = train_ds_builder.as_dataset(
+        split=train_split,
+        read_config=read_config,
+        shuffle_files=config.enable_data_shuffling,
+    )
+    # shard the dataset as soon as it is loaded
+    train_ds = train_ds.shard(
+        num_shards=dataloading_host_count, index=dataloading_host_index
+    )
+
+    # Evaluation dataset.
+    if config.eval_dataset_name:
+        eval_ds_builder = tfds.builder(config.eval_dataset_name)
+    else:
+        eval_ds_builder = train_ds_builder
+    # eval_data = get_raw_dataset(eval_ds_builder, config.eval_split)
+    eval_ds = eval_ds_builder.as_dataset(
+        split=eval_split, read_config=read_config, shuffle_files=False
+    )
+
+    eval_ds = eval_ds.shard(num_shards=jax.process_count(), index=jax.process_index())
+
+    return train_ds, eval_ds, None
+
+
 def get_high_res_datasets(
     config: ml_collections.ConfigDict,
     dataloading_host_index,
@@ -390,7 +426,7 @@ def get_high_res_datasets(
     num_examples_per_bucket = np.array([s.num_examples for s in splits.values()])
     # Skew the number of examples per bucket to benefit the commoner datapoints
     num_examples_per_bucket = np.clip(num_examples_per_bucket, 1, 5_000_000)
-    
+
     total_examples = np.sum(num_examples_per_bucket)
     print(total_examples)
 
@@ -454,26 +490,26 @@ def get_mixed_datasets(
     lr_train_ds, lr_eval_ds, lr_test_ds = get_datasets(
         config, dataloading_host_index, dataloading_host_count, read_config
     )
-    
+
     hr_train_ds, _, _ = get_high_res_datasets(
         config, dataloading_host_index, dataloading_host_count, read_config
     )
-        
+
     def assign_min_sample_weight(example):
         example["sample_weight"] = tf.cast(MIN_SW, tf.float32)
         return example
-    
+
     hr_train_ds = hr_train_ds.map(assign_min_sample_weight)
 
     hr_weight = config.mix_high_res_ratio
     train_ds = tf.data.Dataset.sample_from_datasets(
         datasets=[lr_train_ds, hr_train_ds],
-        weights=[1-hr_weight, hr_weight],
+        weights=[1 - hr_weight, hr_weight],
         seed=42,
         rerandomize_each_iteration=True,
         stop_on_empty_dataset=True,
     )
-    
+
     return train_ds, lr_eval_ds, lr_test_ds
 
 
@@ -487,17 +523,6 @@ def preprocess_dataset(
     data_shuffle_seed=0,
 ):
     """Pre-process the dataset and return iterators"""
-    # Tokenize data.
-
-    # TokenizeOp = tokenizer.TokenizeOp(sp_tokenizer)
-    # TokenizeOp = functools.partial(pretend_tokenize_op, vocab_size=config.vocab_size)
-
-    # Tokenize no op
-    TokenizeOp = lambda x: x
-
-    train_ds = train_ds.map(TokenizeOp, num_parallel_calls=AUTOTUNE)
-    if eval_ds is not None:
-        eval_ds = eval_ds.map(TokenizeOp, num_parallel_calls=AUTOTUNE)
 
     # Set global batch size.
     global_batch_size_to_load = config.global_batch_size_to_load
@@ -506,7 +531,6 @@ def preprocess_dataset(
         eval_batch_size = config.eval_per_device_batch_size * global_mesh.size
     else:
         eval_batch_size = global_batch_size_to_load
-
 
     shuffle_buffer_size = 1024
     if config.use_high_res_data or config.mix_high_res_ratio > 0.0:
@@ -525,36 +549,45 @@ def preprocess_dataset(
         shift=False,
         data_shuffle_seed=data_shuffle_seed,
         normalize=config.normalize,
+        grid_size=config.grid_size,
     )
 
-    eval_iter = preprocessing_pipeline(
-        eval_ds,
-        eval_batch_size,
-        global_mesh,
-        shuffle=False,
-        pack_examples=False,
-        max_input_length=config.N_IN,
-        max_target_length=config.N_OUT,
-        shift=False,
-        drop_remainder=True,
-        data_shuffle_seed=data_shuffle_seed,
-        normalize=config.normalize,
-    )
+    if eval_ds is not None:
+        eval_iter = preprocessing_pipeline(
+            eval_ds,
+            eval_batch_size,
+            global_mesh,
+            shuffle=False,
+            pack_examples=False,
+            max_input_length=config.N_IN,
+            max_target_length=config.N_OUT,
+            shift=False,
+            drop_remainder=True,
+            data_shuffle_seed=data_shuffle_seed,
+            normalize=config.normalize,
+            grid_size=config.grid_size,
+        )
+    else:
+        eval_iter = None
 
-    predict_iter = preprocessing_pipeline(
-        test_ds,
-        eval_batch_size,
-        global_mesh,
-        shuffle=False,
-        num_epochs=None,
-        pack_examples=False,
-        max_input_length=config.N_IN,
-        max_target_length=config.N_OUT,
-        shift=False,
-        drop_remainder=False,
-        data_shuffle_seed=data_shuffle_seed,
-        has_targets=False,
-        normalize=config.normalize,
-    )
+    if test_ds is not None:
+        predict_iter = preprocessing_pipeline(
+            test_ds,
+            eval_batch_size,
+            global_mesh,
+            shuffle=False,
+            num_epochs=None,
+            pack_examples=False,
+            max_input_length=config.N_IN,
+            max_target_length=config.N_OUT,
+            shift=False,
+            drop_remainder=False,
+            data_shuffle_seed=data_shuffle_seed,
+            has_targets=False,
+            normalize=config.normalize,
+            grid_size=config.grid_size,
+        )
+    else:
+        predict_iter = None
 
     return train_iter, eval_iter, predict_iter

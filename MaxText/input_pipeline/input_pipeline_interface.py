@@ -23,6 +23,7 @@ import jax
 import jax.numpy as jnp
 from jax.sharding import PartitionSpec as P
 
+# from MaxText import max_logging, maxtext_utils
 from input_pipeline import _tfds_data_processing
 from input_pipeline import _grain_data_processing
 from input_pipeline import _tfds_data_processing_c4_mlperf
@@ -52,6 +53,8 @@ def make_c4_mlperf_train_iterator_and_tokenizer(config, mesh, add_bos, add_eos, 
 def make_c4_train_iterator_and_tokenizer(config, mesh, add_bos, add_eos, process_indices):
   """Make train iterator and tokenizer for C4 dataset"""
   
+  print("inside make_c4_train_iterator_and_tokenizer")
+  
   if config.use_high_res_data or config.mix_high_res_ratio > 0.0:
     read_config = tfds.ReadConfig(
       shuffle_seed=config.data_shuffle_seed,
@@ -67,7 +70,7 @@ def make_c4_train_iterator_and_tokenizer(config, mesh, add_bos, add_eos, process
     read_config = tfds.ReadConfig(
       shuffle_seed=config.data_shuffle_seed,
     )
-    get_datasets = _tfds_data_processing.get_datasets
+    get_datasets = _tfds_data_processing.get_lr_grid_datasets
   
 
   train_ds, eval_ds, test_ds = get_datasets(
@@ -76,6 +79,7 @@ def make_c4_train_iterator_and_tokenizer(config, mesh, add_bos, add_eos, process
       dataloading_host_count=len(process_indices),
       read_config=read_config,
   )
+  
   sp_tokenizer = get_tokenizer(config.tokenizer_path, add_bos, add_eos)
   train_iter, eval_iter, test_iter = _tfds_data_processing.preprocess_dataset(
       config,
@@ -188,7 +192,9 @@ class BadSyntheticDataIterator:
 def get_process_loading_real_data(config, mesh):
   """Get list of processes loading data from GCS when expansion_factor_real_data != -1"""
   sharding = jax.sharding.NamedSharding(mesh, P(*config.data_sharding))
-  devices_indices_map = sharding.devices_indices_map((config.global_batch_size_to_load, config.max_target_length))
+  devices_indices_map = sharding.devices_indices_map(
+    (config.global_batch_size_to_load, config.grid_size, config.N_IN)
+    )
   batch_cutoff = config.global_batch_size_to_train_on
   process_loading_real_data = set()
   for p, indices in devices_indices_map.items():
@@ -198,12 +204,12 @@ def get_process_loading_real_data(config, mesh):
 
 
 def make_mixed_train_iterator_and_tokenizer(config, mesh, add_bos, add_eos):
+  
   process_indices = get_process_loading_real_data(config, mesh)
   if config.expansion_factor_real_data != -1: # assert number of hosts loading real data
     assert len(process_indices) == jax.process_count() // config.expansion_factor_real_data
   if jax.process_index() in process_indices:
     if config.dataset_type == "c4":
-      # print("Inside make_mixed_train_iterator_and_tokenizer")
       return make_c4_train_iterator_and_tokenizer(config, mesh, add_bos, add_eos, process_indices)
     elif config.dataset_type == "c4-array_record":
       return make_grain_train_iterator_and_tokenizer(config, mesh, add_bos, add_eos, process_indices)
@@ -220,7 +226,6 @@ def create_data_iterator_with_tokenizer(config, mesh, add_bos=True, add_eos=True
   if config.dataset_type == "synthetic":
     return SyntheticDataIterator(config, mesh), None, get_tokenizer(config.tokenizer_path, add_bos, add_eos)
   elif config.dataset_type in ("c4", "c4-array_record", "c4_mlperf"):
-    # print("Inside create_data_iterator_with_tokenizer")
     return make_mixed_train_iterator_and_tokenizer(config, mesh, add_bos, add_eos)
   else:
     assert False, "dataset type not implemented"

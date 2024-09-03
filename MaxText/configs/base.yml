@@ -40,7 +40,7 @@ load_full_state_path: ""
 # problems with the checkpointer we recommend trying the synchronous one.
 enable_checkpointing: True
 async_checkpointing: True
-n_checkpoints_every_epoch: 2 # If set, overrides checkpoint_interval
+n_checkpoints_every_epoch: 2.0 # If set, overrides checkpoint_interval
 checkpoint_period: 4000
 # enables one replica to read the ckpt then broadcast to the rest
 enable_single_replica_ckpt_restoring: False
@@ -87,7 +87,8 @@ dropout_rate: 0.0
 logits_via_embedding: False
 normalize_embedding_logits: True  # whether to normlize pre-softmax logits if logits_via_embedding is true
 logits_dot_in_fp32: True  # whether to use fp32 in logits_dense or shared_embedding dot product for stability
-
+topo_constraints_dim: 468
+use_fake_topo_constr: False
 
 only_mlp: False
 stack_inputs: False
@@ -153,8 +154,8 @@ dcn_fsdp_transpose_parallelism: 1
 dcn_sequence_parallelism: 1  # never recommended
 dcn_tensor_parallelism: 1 # never recommended
 dcn_autoregressive_parallelism: 1 # never recommended
-ici_data_parallelism: -1
-ici_fsdp_parallelism: 1 # recommended ICI axis to be auto-sharded
+ici_data_parallelism: 1
+ici_fsdp_parallelism: -1 # recommended ICI axis to be auto-sharded
 ici_fsdp_transpose_parallelism: 1
 ici_sequence_parallelism: 1
 ici_tensor_parallelism: 1
@@ -265,7 +266,7 @@ decode_sampling_nucleus_p: -1 # set if you're doing nucleus / top-p
 decode_sampling_top_k: 0 # set if you're doing top-k
 decode_sampling_temperature: 1.
 
-n_evals_every_epoch: 2  # If set, overrides eval_interval
+n_evals_every_epoch: 2.0  # If set, overrides eval_interval
 eval_interval: 4000  # the specific number of train step between eval_step -> eval every 0.1 epochs
 target_eval_loss: 0.  # early stop once reaching target eval_loss
 

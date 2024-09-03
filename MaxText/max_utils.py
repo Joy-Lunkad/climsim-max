@@ -388,12 +388,23 @@ def init_initial_state(model, tx, config, is_training, key):
 
   Args: model, tx, config, is_training, key
   """
-  input_shape = (config.global_batch_size_to_load, config.max_target_length)
+  
+  if config.IS_GRID_DATA:
+    input_shape = (
+      config.global_batch_size_to_load,
+      config.grid_size,
+      config.N_IN,
+    )
+
+  else:
+    input_shape = (config.global_batch_size_to_load, config.N_IN)
+
   model_vars = model.init(
       {"params": key, "dropout": key, "aqt": key},
       jnp.ones(input_shape, dtype=jnp.float32),
-      jnp.ones(input_shape, dtype=jnp.float32),
+      jnp.ones(input_shape[0], dtype=jnp.int32),
   )
+  
   if is_training:
     return init_training_state(model.apply, model_vars, tx)
   return init_decode_state(model.apply, model_vars)
@@ -622,7 +633,7 @@ def get_kv_cache_annotations(model, config, rng, mesh):
     model_vars = model.init(
         {"params": rng, "dropout": rng, "aqt": rng},
         jnp.ones(input_shape),
-        jnp.ones(input_shape),
+        jnp.ones(input_shape[0], dtype=jnp.int32),
         model_mode=common_types.MODEL_MODE_PREFILL,
     )
     return model_vars["cache"]

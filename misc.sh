@@ -1,5 +1,5 @@
 # v4-8
-git clone https://github.com/Joy-Lunkad/climsim-max.git --branch re_sub_2
+git clone https://github.com/Joy-Lunkad/climsim-max.git --branch grid
 cd climsim-max
 bash setup.sh MODE=stable JAX_VERSION=0.4.28
 
@@ -11,6 +11,7 @@ gsutil cp gs://us2-climsim/sample_id_to_sample_weights.csv ./
 
 kaggle -v
 gsutil cp gs://us2-climsim/kaggle.json ./
+mkdir ~/.kaggle
 cp kaggle.json ~/.kaggle/
 
 rm -f ~/.kaggle/kaggle.json && gsutil cp gs://us2-climsim/lunkad_tv_kaggle.json ./ && cp lunkad_tv_kaggle.json ~/.kaggle/kaggle.json
@@ -18,7 +19,7 @@ rm -f ~/.kaggle/kaggle.json && gsutil cp gs://us2-climsim/lunkad_tv_kaggle.json 
 
 screen -S train
 
-git pull && python3 MaxText/train.py MaxText/configs/base.yml num_epochs=201 use_full_low_res_data=True full_low_res_version=7.0.0 only_mlp=True base_num_decoder_layers=4 base_mlp_dim=8192 per_device_batch_size=4096 learning_rate=1e-2 cosine_learning_rate_final_fraction=1e-5 run_name=test_mlp_with_7
+git pull && python3 MaxText/train.py MaxText/configs/base.yml num_epochs=1 use_full_low_res_data=True full_low_res_version=2.0.0 only_mlp=True base_num_decoder_layers=4 base_emb_dim=1024 base_mlp_dim=1024 per_device_batch_size=4 learning_rate=5e-4 cosine_learning_rate_final_fraction=1e-3 run_name=test_full_grid_data
 
 
 ## v4-64
@@ -28,7 +29,7 @@ gcloud config set project ai-memory
 gcloud config set compute/zone us-central2-b
 ssh-keygen -f ~/.ssh/google_compute_engine
 
-git clone https://github.com/Joy-Lunkad/climsim-max.git --branch re_sub_2
+git clone https://github.com/Joy-Lunkad/climsim-max.git --branch grid
 cd climsim-max
 gsutil cp gs://us2-climsim/sample_id_to_sample_weights.csv ./
 
@@ -43,9 +44,14 @@ python3 multihost_runner.py --TPU_PREFIX=us-node-0 --COMMAND="source ~/.bashrc &
 
 python3 multihost_runner.py --TPU_PREFIX=us-node-0 --COMMAND="source ~/.bashrc && /home/joylunkad/.local/bin/kaggle -v"
 
-python3 multihost_runner.py --TPU_PREFIX=us-node-0 --COMMAND="gsutil cp gs://us2-climsim/kaggle.json ./ && cp kaggle.json ~/.kaggle/"
+
+python3 multihost_runner.py --TPU_PREFIX=us-node-0 --COMMAND="gsutil cp gs://us2-climsim/kaggle.json ./ && mkdir ~/.kaggle &&  cp kaggle.json ~/.kaggle/"
 
 python3 multihost_runner.py --TPU_PREFIX=us-node-0 --COMMAND="rm -f ~/.kaggle/kaggle.json && gsutil cp gs://us2-climsim/lunkad_tv_kaggle.json ./ && cp lunkad_tv_kaggle.json ~/.kaggle/kaggle.json"
+
+git pull && python3 multihost_runner.py --TPU_PREFIX=us-node-0 --COMMAND="gsutil cp gs://us2-climsim/sample_id_to_sample_weights.csv ./"
+
+git pull && python3 multihost_runner.py --TPU_PREFIX=us-node-0 --COMMAND="python3 MaxText/train.py MaxText/configs/base.yml num_epochs=100 use_full_low_res_data=True full_low_res_version=2.0.0 only_mlp=True base_num_decoder_layers=12 base_emb_dim=2048 base_mlp_dim=8192 per_device_batch_size=64 learning_rate=1e-1 cosine_learning_rate_final_fraction=1e-5 run_name=full_grid_data_mlp"
 
 git pull && python3 multihost_runner.py --TPU_PREFIX=us-node-0 --COMMAND="python3 MaxText/train.py MaxText/configs/base.yml per_device_batch_size=64 num_epochs=20 base_num_decoder_layers=12 base_emb_dim=512 base_mlp_dim=2048 base_num_query_heads=4 base_num_kv_heads=4  use_full_low_res_data=True mix_high_res_ratio=0.375 learning_rate=1e-3 ici_fsdp_parallelism=4 run_name=psuedo_moe_mixed_ds_nofsmlp"
 
@@ -162,16 +168,23 @@ gcloud alpha compute tpus queued-resources create pre-qr2-32 --node-id pre-us-no
 
 
 
-gcloud alpha compute tpus queued-resources create pre-qr1-8 --node-id pre-us-node-0 --project ai-memory --zone us-central2-b --accelerator-type v4-8 --runtime-version tpu-ubuntu2204-base --best-effort
-gcloud alpha compute tpus queued-resources create pre-qr2-8 --node-id pre-us-node-0 --project ai-memory --zone us-central2-b --accelerator-type v4-8 --runtime-version tpu-ubuntu2204-base --best-effort
-gcloud alpha compute tpus queued-resources create pre-qr3-8 --node-id pre-us-node-0 --project ai-memory --zone us-central2-b --accelerator-type v4-8 --runtime-version tpu-ubuntu2204-base --best-effort
-gcloud alpha compute tpus queued-resources create pre-qr4-8 --node-id pre-us-node-0 --project ai-memory --zone us-central2-b --accelerator-type v4-8 --runtime-version tpu-ubuntu2204-base --best-effort
-gcloud alpha compute tpus queued-resources create pre-qr5-8 --node-id pre-us-node-0 --project ai-memory --zone us-central2-b --accelerator-type v4-8 --runtime-version tpu-ubuntu2204-base --best-effort
-gcloud alpha compute tpus queued-resources create pre-qr6-8 --node-id pre-us-node-0 --project ai-memory --zone us-central2-b --accelerator-type v4-8 --runtime-version tpu-ubuntu2204-base --best-effort
-gcloud alpha compute tpus queued-resources create pre-qr7-8 --node-id pre-us-node-0 --project ai-memory --zone us-central2-b --accelerator-type v4-8 --runtime-version tpu-ubuntu2204-base --best-effort
-gcloud alpha compute tpus queued-resources create pre-qr8-8 --node-id pre-us-node-0 --project ai-memory --zone us-central2-b --accelerator-type v4-8 --runtime-version tpu-ubuntu2204-base --best-effort
+gcloud alpha compute tpus queued-resources create pre-qr1-8 --node-id pre-us-node-1 --project ai-memory --zone us-central2-b --accelerator-type v4-8 --runtime-version tpu-ubuntu2204-base --best-effort
+gcloud alpha compute tpus queued-resources create pre-qr2-8 --node-id pre-us-node-2 --project ai-memory --zone us-central2-b --accelerator-type v4-8 --runtime-version tpu-ubuntu2204-base --best-effort
+gcloud alpha compute tpus queued-resources create pre-qr3-8 --node-id pre-us-node-3 --project ai-memory --zone us-central2-b --accelerator-type v4-8 --runtime-version tpu-ubuntu2204-base --best-effort
+gcloud alpha compute tpus queued-resources create pre-qr4-8 --node-id pre-us-node-4 --project ai-memory --zone us-central2-b --accelerator-type v4-8 --runtime-version tpu-ubuntu2204-base --best-effort
+gcloud alpha compute tpus queued-resources create pre-qr5-8 --node-id pre-us-node-5 --project ai-memory --zone us-central2-b --accelerator-type v4-8 --runtime-version tpu-ubuntu2204-base --best-effort
+gcloud alpha compute tpus queued-resources create pre-qr6-8 --node-id pre-us-node-6 --project ai-memory --zone us-central2-b --accelerator-type v4-8 --runtime-version tpu-ubuntu2204-base --best-effort
+gcloud alpha compute tpus queued-resources create pre-qr7-8 --node-id pre-us-node-7 --project ai-memory --zone us-central2-b --accelerator-type v4-8 --runtime-version tpu-ubuntu2204-base --best-effort
+gcloud alpha compute tpus queued-resources create pre-qr8-8 --node-id pre-us-node-8 --project ai-memory --zone us-central2-b --accelerator-type v4-8 --runtime-version tpu-ubuntu2204-base --best-effort
 
 gcloud alpha compute tpus queued-resources delete pre-qr1-8 --force --async
+gcloud alpha compute tpus queued-resources delete pre-qr2-8 --force --async
+gcloud alpha compute tpus queued-resources delete pre-qr3-8 --force --async
+gcloud alpha compute tpus queued-resources delete pre-qr4-8 --force --async
+gcloud alpha compute tpus queued-resources delete pre-qr5-8 --force --async
+gcloud alpha compute tpus queued-resources delete pre-qr6-8 --force --async
+gcloud alpha compute tpus queued-resources delete pre-qr7-8 --force --async
+gcloud alpha compute tpus queued-resources delete pre-qr8-8 --force --async
 
 
 # Downloading and Processing climsim_high_res_train
@@ -212,6 +225,8 @@ for idx in $(seq 8 8 511); do
   rm -rf /home/joylunkad/.cache/huggingface/hub/datasets--LEAP--ClimSim_high-res/
 done
 
+git pull && tfds build --data_dir="gs://us2-climsim"
+rm -rf /home/joylunkad/.cache/huggingface/hub/datasets--LEAP--ClimSim_low-res/
 
 python3 multihost_runner.py --TPU_PREFIX=us-node-0 --COMMAND="source ~/.bashrc && echo $PATH"
 

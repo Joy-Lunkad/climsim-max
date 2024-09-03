@@ -64,6 +64,15 @@ class Embed(nn.Module):
         self.config.weight_dtype,
     )
     
+    assert N_IN < self.config.emb_dim, "Inputs are a portion of the emb_dim"
+    
+    self.topographical_embedding = self.param(
+        "topographical_embedding",
+        with_logical_partitioning(jax.nn.initializers.constant(0.0), ("vocab", "embed")),
+        (self.config.grid_size, self.config.emb_dim),
+        self.config.weight_dtype,
+    )
+
     self.x_learn = self.param(
         "x_learn",
         with_logical_partitioning(jax.nn.initializers.constant(0.0), ("vocab", "embed")),
@@ -78,16 +87,10 @@ class Embed(nn.Module):
         (N_OUT, self.features),
         self.config.weight_dtype,
     )
-    
-    # self.pad = self.param(
-    #     "pad",
-    #     with_logical_partitioning(jax.nn.initializers.constant(0.0), ("vocab", "embed")),
-    #     (1024 - N_IN - N_OUT, self.features),
-    #     self.config.weight_dtype,
-    # )
+
     self.pad = jnp.zeros((1024 - N_IN - N_OUT, self.features), dtype=self.dtype)
 
-  def __call__(self, inputs: Array) -> Array:
+  def __call__(self, inputs: Array, grid_positions: Array) -> Array:
     """Embeds the inputs along the last dimension.
 
     Args:
@@ -98,14 +101,26 @@ class Embed(nn.Module):
       with an additional `features` dimension appended.
     """
     
+    x = inputs
+    
     cfg = self.config
     N_IN = cfg.N_IN
     N_OUT = cfg.N_OUT
+    BATCH_SIZE = x.shape[0]
     PAD = 1024 - N_IN - N_OUT
-    x = inputs[:, :N_IN]
+    NUM_TOKENS = 1 if cfg.only_mlp else N_OUT
     
+    x = jnp.broadcast_to(jnp.expand_dims(x, axis=2), (BATCH_SIZE, cfg.grid_size, NUM_TOKENS, N_IN))
+    topo_emb = jnp.asarray(self.topographical_embedding, self.dtype)[:, :-N_IN]
+    topo_emb = jnp.broadcast_to(
+      jnp.expand_dims(topo_emb, axis=[0, 2]), 
+      (BATCH_SIZE, cfg.grid_size, NUM_TOKENS, cfg.emb_dim - N_IN),
+      )
+    x = jnp.concatenate([x, topo_emb], axis=-1)
+    x = x.reshape(BATCH_SIZE * cfg.grid_size, NUM_TOKENS, cfg.emb_dim)
+
     if cfg.only_mlp:
-      output = jnp.expand_dims(x, axis=1)
+      output = x
     
     else:
       tokens = jnp.arange(N_IN + N_OUT + PAD, dtype=jnp.int32)
