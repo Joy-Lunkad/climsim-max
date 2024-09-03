@@ -130,7 +130,7 @@ def write_metrics(writer, local_metrics_file, running_gcs_metrics, metrics, step
   _buffered_step = step
   _buffered_metrics = metrics
 
-y_cols = np.load("output_col_names.npy")
+y_cols = np.load("saved_data/output_col_names.npy")
 def write_metrics_to_tensorboard(writer, metrics, step, config):
   """Writes metrics to tensorboard"""
   with jax.spmd_mode("allow_all"):
@@ -199,8 +199,8 @@ def record_activation_metrics(output_metrics, intermediate_outputs, config):
       output_metrics["scalar"][f"activ_mean/layer_{layer_num:03d}"] = layer["activation_mean"][0]
       output_metrics["scalar"][f"activ_stdev/layer_{layer_num:03d}"] = layer["activation_stdev"][0]
 
-mean_y = np.load("keras_mean_y.npy")[0]
-r2_mask = np.load("scale_output_weights_new.npy").astype('bool')
+mean_y = np.load("saved_data/keras_mean_y.npy")[0]
+r2_mask = np.load("saved_data/scale_output_weights_new.npy").astype('bool')
 
 def calc_idv_r2_score(y_true, y_pred):
     numerator = jnp.sum((y_true - y_pred) ** 2, axis=0)

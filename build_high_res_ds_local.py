@@ -68,17 +68,17 @@ class Args:
     restructure_tfrecords: bool = False
 
 
-train_col_names = np.load("train_col_names.npy").tolist()
+train_col_names = np.load("saved_data/train_col_names.npy").tolist()
 repo_id = "LEAP/ClimSim_high-res"
 local_dir = "./high_res_data/"
 
-s_mean = np.load("s_mean.npy")
-s_std = np.load("s_std.npy")
+s_mean = np.load("saved_data/s_mean.npy")
+s_std = np.load("saved_data/s_std.npy")
 
-ip_means = np.load("input_means.npy")
-ip_stds = np.load("input_stds.npy")
+ip_means = np.load("saved_data/input_means.npy")
+ip_stds = np.load("saved_data/input_stds.npy")
 
-train_mean_and_std_df = pd.read_csv("train_mean_and_std.csv", index_col=0)
+train_mean_and_std_df = pd.read_csv("saved_data/train_mean_and_std.csv", index_col=0)
 op_means = train_mean_and_std_df["mean"][556:].values
 op_stds = train_mean_and_std_df["std"][556:].values
 

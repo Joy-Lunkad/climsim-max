@@ -684,26 +684,26 @@ def summarize_pytree_data(params, name="Params", raw=False):
   return num_params, total_param_size, avg_param_size
 
 
-x_denorm_mean = np.load("x_denorm_mean.npy")
-x_denorm_std = np.load("x_denorm_std.npy")
-y_denorm_mean = np.load("y_denorm_mean.npy")
-y_denorm_std = np.load("y_denorm_std.npy")
+x_denorm_mean = np.load("saved_data/x_denorm_mean.npy")
+x_denorm_std = np.load("saved_data/x_denorm_std.npy")
+y_denorm_mean = np.load("saved_data/y_denorm_mean.npy")
+y_denorm_std = np.load("saved_data/y_denorm_std.npy")
 
-x_denorm_mean_high_res = np.load("x_denorm_mean_high_res.npy")
-x_denorm_std_high_res = np.load("x_denorm_std_high_res.npy")
+x_denorm_mean_high_res = np.load("saved_data/x_denorm_mean_high_res.npy")
+x_denorm_std_high_res = np.load("saved_data/x_denorm_std_high_res.npy")
 x_denorm_std_high_res_safe = np.maximum(x_denorm_std_high_res, 1e-20)
 
 
-y_denorm_mean_high_res = np.load("y_denorm_mean_high_res.npy")
-y_denorm_std_high_res = np.load("y_denorm_std_high_res.npy")
+y_denorm_mean_high_res = np.load("saved_data/y_denorm_mean_high_res.npy")
+y_denorm_std_high_res = np.load("saved_data/y_denorm_std_high_res.npy")
 y_denorm_std_high_res = y_denorm_std_high_res.astype(np.float32)
 y_denorm_std_high_res = np.where(y_denorm_std_high_res < 1e-33, 0, y_denorm_std_high_res)
 
 
-scale_output_weights = np.load("scale_output_weights.npy")
-# scale_output_weights_high_res = np.load("scale_output_weights_high_res.npy")
-scale_output_weights_high_res = np.load("scale_output_weights_new.npy")
-not_ablated_col_indices = np.load("not_ablated_col_indices.npy")
+scale_output_weights = np.load("saved_data/scale_output_weights.npy")
+# scale_output_weights_high_res = np.load("saved_data/scale_output_weights_high_res.npy")
+scale_output_weights_high_res = np.load("saved_data/scale_output_weights_new.npy")
+not_ablated_col_indices = np.load("saved_data/not_ablated_col_indices.npy")
 
 
 def expand_add_ablated_cols(y):
@@ -761,10 +761,10 @@ def safe_denorm_input(x):
 
 
 
-ip_means = np.load("input_means.npy")
-ip_stds = np.load("input_stds.npy")
+ip_means = np.load("saved_data/input_means.npy")
+ip_stds = np.load("saved_data/input_stds.npy")
 
-train_mean_and_std_df = pd.read_csv("train_mean_and_std.csv", index_col=0)
+train_mean_and_std_df = pd.read_csv("saved_data/train_mean_and_std.csv", index_col=0)
 op_means = train_mean_and_std_df["mean"][556:].values
 op_stds = train_mean_and_std_df["std"][556:].values
 
@@ -799,17 +799,17 @@ def change_y_std_0_to_mean(y):
     return y
 
 
-old_scale_output_weights = np.load("scale_output_weights_high_res.npy")
+old_scale_output_weights = np.load("saved_data/scale_output_weights_high_res.npy")
 
 def old_scale_output(y):
     y = y * old_scale_output_weights
     return y
 
 
-x_max = np.load("x_max.npy")
-x_min = np.load("x_min.npy")
-y_max = np.load("y_max.npy")
-y_min = np.load("y_min.npy")
+x_max = np.load("saved_data/x_max.npy")
+x_min = np.load("saved_data/x_min.npy")
+y_max = np.load("saved_data/y_max.npy")
+y_min = np.load("saved_data/y_min.npy")
 
 x_diff = x_max - x_min
 y_diff = y_max - y_min
@@ -831,12 +831,12 @@ def min_max_denorm_output(y):
     return y
 
 
-keras_mean_x = np.load("keras_mean_x.npy")[0]
-keras_var_x = np.load("keras_var_x.npy")[0]
+keras_mean_x = np.load("saved_data/keras_mean_x.npy")[0]
+keras_var_x = np.load("saved_data/keras_var_x.npy")[0]
 keras_std_x = np.maximum(1e-20, keras_var_x ** 0.5)
 
-keras_mean_y = np.load("keras_mean_y.npy")[0]
-keras_var_y = np.load("keras_var_y.npy")[0]
+keras_mean_y = np.load("saved_data/keras_mean_y.npy")[0]
+keras_var_y = np.load("saved_data/keras_var_y.npy")[0]
 keras_std_y = keras_var_y ** 0.5
 keras_std_y = keras_std_y.astype(np.float32)
 keras_std_y = np.where(keras_std_y < 1e-33, 0, keras_std_y)
