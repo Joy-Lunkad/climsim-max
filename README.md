@@ -4,7 +4,7 @@ Hosted on [Kaggle](https://www.kaggle.com/competitions/leap-atmospheric-physics-
 
 The objective was to create an efficient ML model to replace an expensive submodule of the climate model, potentially transforming climate prediction by significantly reducing operational costs. 
 
-![im_1.jpg](im_1.jpg)
+![im_1.jpg](saved_data/im_1.jpg)
 
 # Project Highlights
 
@@ -17,7 +17,7 @@ The objective was to create an efficient ML model to replace an expensive submod
 
 # Insights
 
-![im_2.png](im_2.png)
+![im_2.png](saved_data/im_2.png)
 
 The ultimate goal of the competition and my project was long-term weather prediction but every model everyone made fell short of this goal. Why?
 
