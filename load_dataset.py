@@ -1,9 +1,13 @@
-"""climsim_low_res_test dataset."""
-
-import tensorflow_datasets as tfds
 import pandas as pd
+import tensorflow_datasets as tfds
 import tensorflow as tf
+import numpy as np
+import os
+from sklearn.preprocessing import StandardScaler
+import enum
+import xarray as xr
 
+# These features have the same mean, min, and max so we can drop them
 USELESS_FEATURES = [
     "pbuf_CH4_27",
     "pbuf_CH4_28",
@@ -137,53 +141,87 @@ ABLATED_COL_NAMES = [
 ]
 
 
-class Builder(tfds.core.GeneratorBasedBuilder):
-    """DatasetBuilder for climsim_low_res_test dataset."""
-
-    VERSION = tfds.core.Version("1.0.0")
-    RELEASE_NOTES = {
-        "1.0.0": "Initial release.",
-    }
-
-    def _info(self) -> tfds.core.DatasetInfo:
-        """Returns the dataset metadata."""
-
-        return self.dataset_info_from_configs(
-            features=tfds.features.FeaturesDict(
-                {
-                    # These are the features of your dataset like images, labels ...
-                    "inputs": tfds.features.Tensor(shape=(490,), dtype=tf.float32),
-                    "sample_id": tfds.features.Text(),
-                }
-            ),
-            homepage="https://www.kaggle.com/competitions/leap-atmospheric-physics-ai-climsim/data/",
+def min_max_norm(df: pd.DataFrame, norm_path: str = "./"):
+    df_stats = pd.read_csv(
+        os.path.join(norm_path, "train_stats.csv"),
+        index_col=0,
+    )
+    for col in df.columns.to_list():
+        df[col] = (df[col] - df_stats[col]["min"]) / (
+            df_stats[col]["max"] - df_stats[col]["min"]
         )
+    return df
 
-    def _split_generators(self, dl_manager: tfds.download.DownloadManager):
-        """Returns SplitGenerators."""
-        return {
-            "test": self._generate_examples("../test.csv"),
-        }
 
-    def _generate_examples(self, test_path):
-        """Yields examples."""
+def z_norm(df: pd.DataFrame, norm_path: str = "./"):
+    df_stats = pd.read_csv(
+        os.path.join(norm_path, "train_stats.csv"),
+        index_col=0,
+    )
+    for col in df.columns.to_list():
+        df[col] = (df[col] - df_stats[col]["mean"]) / df_stats[col]["std"]
+    return df
 
-        train_stats_df = pd.read_csv("../train_stats.csv", index_col=0)
 
-        for test_chunk in pd.read_csv(test_path, chunksize=100000):
+# Enum for types of norms
+class NormType(enum.Enum):
+    MIN_MAX = 1
+    Z_NORM = 2
 
-            test_chunk.drop(USELESS_FEATURES, axis=1, inplace=True)
 
-            sample_ids = test_chunk["sample_id"]
-            x_test = test_chunk.iloc[:, 1:491]
+def process_data(
+    csv_path: str,
+    norm_path: str,
+    which_norm: NormType = NormType.Z_NORM,
+    train_nrows: int | None = None,
+    test_nrows: int | None = None,
+):
 
-            for col in x_test.columns.to_list():
-                x_test[col] = (
-                    x_test[col] - train_stats_df[col]["mean"]
-                ) / train_stats_df[col]["std"]
+    # ---------------------- Training Data --------------------------------
 
-            for sample_id, x in zip(sample_ids, x_test.values):
-                yield sample_id, {
-                    "inputs": x.astype("float32"),
-                    "sample_id": sample_id,
-                }
+    train_df = pd.read_csv(
+        os.path.join(csv_path, "train.csv"),
+        nrows=train_nrows,
+    )
+    
+    train_ids = train_df['sample_id']
+
+    x_train = train_df.iloc[:, 1:557]
+    y_train = train_df.iloc[:, 557:]
+
+    x_train.drop(USELESS_FEATURES, axis=1, inplace=True)
+    y_train.drop(ABLATED_COL_NAMES, axis=1, inplace=True)
+    
+    # ---------------------- Test Data --------------------------------
+
+    test_df = pd.read_csv(
+        os.path.join(csv_path, "test.csv"),
+        nrows=test_nrows,
+    )
+
+    test_ids = test_df['sample_id']
+    
+    x_test = test_df.iloc[:, 1:557]
+
+    x_test.drop(USELESS_FEATURES, axis=1, inplace=True)
+
+    # ---------------------- Sample Submission ---------------------------
+
+    sub_df = pd.read_csv(
+        os.path.join(csv_path, "sample_submission.csv"),
+        nrows=1,
+    )
+
+    # ---------------------- Normalization ------------------------------
+
+    if which_norm == NormType.Z_NORM:
+        x_train = z_norm(x_train, norm_path)
+        y_train = z_norm(y_train, norm_path)
+        x_test = z_norm(x_test, norm_path)
+
+    elif which_norm == NormType.MIN_MAX:
+        x_train = min_max_norm(x_train, norm_path)
+        y_train = min_max_norm(y_train, norm_path)
+        x_test = min_max_norm(x_test, norm_path)
+
+    

@@ -140,33 +140,20 @@ ABLATED_COL_NAMES = [
 class Builder(tfds.core.GeneratorBasedBuilder):
     """DatasetBuilder for climsim_low_res_train dataset."""
 
-    VERSION = tfds.core.Version("7.0.0")
+    VERSION = tfds.core.Version("1.0.0")
     RELEASE_NOTES = {
         "1.0.0": "Initial release.",
-        "2.0.0": "Low-res with high res processing",
-        "3.0.0": "No processing",
-        "6.0.0": "No processing but float64",
-        "7.0.0": "Split train and val with float64",
     }
 
     def _info(self) -> tfds.core.DatasetInfo:
         """Returns the dataset metadata."""
 
-        if self.VERSION == "1.0.0":
-            N_IN = 490
-            N_OUT = 308
-        elif self.VERSION in ["2.0.0", "3.0.0", "6.0.0", "7.0.0"]:
-            N_IN = 556
-            N_OUT = 368
-
-        dtype = tf.float64 if self.VERSION in ["6.0.0", "7.0.0"] else tf.float32
-
         return self.dataset_info_from_configs(
             features=tfds.features.FeaturesDict(
                 {
                     "sample_id": tfds.features.Text(),
-                    "inputs": tfds.features.Tensor(shape=(N_IN,), dtype=dtype),
-                    "targets": tfds.features.Tensor(shape=(N_OUT,), dtype=dtype),
+                    "inputs": tfds.features.Tensor(shape=(490,), dtype=tf.float32),
+                    "targets": tfds.features.Tensor(shape=(308,), dtype=tf.float32),
                 }
             ),
             supervised_keys=("inputs", "targets"),
@@ -175,76 +162,37 @@ class Builder(tfds.core.GeneratorBasedBuilder):
 
     def _split_generators(self, dl_manager: tfds.download.DownloadManager):
         """Returns SplitGenerators."""
-        split_gens = {
+        return {
             "train": self._generate_examples("../train.csv"),
         }
-        if self.VERSION == "7.0.0":
-            split_gens["val"] = self._generate_examples(
-                "../train.csv",
-                nrows=10_000_000,
-                skiprows=9_750_000,
-            )
-            split_gens["train"] = self._generate_examples(
-                "../train.csv",
-                nrows=9_750_000,
-            )
-        return split_gens
 
-    def _generate_examples(self, path, nrows=10_000_000, skiprows=0):
+    def _generate_examples(self, path):
         """Yields examples."""
 
-        train_stats_df = pd.read_csv(
-            "../climsim/climsim_high_res_train/train_stats.csv", index_col=0
-        )
+        train_stats_df = pd.read_csv("../train_stats.csv", index_col=0)
 
-        for chunk in pd.read_csv(
-            path,
-            chunksize=100000,
-            nrows=nrows,
-            skiprows=range(1, skiprows),
-            header=0,
-        ):
-            N_IN = 556
-            if self.VERSION == "1.0.0":
-                chunk.drop(USELESS_FEATURES, axis=1, inplace=True)
-                chunk.drop(ABLATED_COL_NAMES, axis=1, inplace=True)
-                N_IN = 490
+        for chunk in pd.read_csv(path, chunksize=100000, nrows=10000000):
+
+            chunk.drop(USELESS_FEATURES, axis=1, inplace=True)
+            chunk.drop(ABLATED_COL_NAMES, axis=1, inplace=True)
 
             sample_ids = chunk["sample_id"]
-            x_train = chunk.iloc[:, 1 : N_IN + 1]
-            y_train = chunk.iloc[:, N_IN + 1 :]
+            x_train = chunk.iloc[:, 1:491]
+            y_train = chunk.iloc[:, 491:]
 
-            if self.VERSION == "1.0.0":
-                for col in x_train.columns.to_list():
-                    x_train[col] = (
-                        x_train[col] - train_stats_df[col]["mean"]
-                    ) / train_stats_df[col]["std"]
-            elif self.VERSION == "2.0.0":
-                for col in x_train.columns.to_list():
-                    std = train_stats_df[col]["std"]
-                    if std != 0:
-                        x_train[col] = (
-                            x_train[col] - train_stats_df[col]["mean"]
-                        ) / std
+            for col in x_train.columns.to_list():
+                x_train[col] = (
+                    x_train[col] - train_stats_df[col]["mean"]
+                ) / train_stats_df[col]["std"]
 
-            if self.VERSION == "1.0.0":
-                for col in y_train.columns.to_list():
-                    y_train[col] = (
-                        y_train[col] - train_stats_df[col]["mean"]
-                    ) / train_stats_df[col]["std"]
-            elif self.VERSION == "2.0.0":
-                for col in y_train.columns.to_list():
-                    std = train_stats_df[col]["std"]
-                    if std != 0:
-                        y_train[col] = (
-                            y_train[col] - train_stats_df[col]["mean"]
-                        ) / std
-
-            dtype = "float64" if self.VERSION in ["6.0.0", "7.0.0"] else "float32"
+            for col in y_train.columns.to_list():
+                y_train[col] = (
+                    y_train[col] - train_stats_df[col]["mean"]
+                ) / train_stats_df[col]["std"]
 
             for sample_id, x, y in zip(sample_ids, x_train.values, y_train.values):
                 yield sample_id, {
                     "sample_id": sample_id,
-                    "inputs": x.astype(dtype),
-                    "targets": y.astype(dtype),
+                    "inputs": x.astype("float32"),
+                    "targets": y.astype("float32"),
                 }
